@@ -58,6 +58,17 @@ check:
 //		DBG("Server path from CWD: %s", dir);
 		if (len > 0 && home[len - 1] == '/')
 			len--;
+
+		/*
+		 * Make sure the home prefix and the path together fit in
+		 * dir[] before prepending, truncating to fit like the
+		 * strlcpy()/strlcat() calls above.
+		 */
+		if (len >= sizeof(dir))
+			len = sizeof(dir) - 1;
+		if (strlen(dir) + 1 > sizeof(dir) - len)
+			dir[sizeof(dir) - len - 1] = 0;
+
 		memmove(dir + len, dir, strlen(dir) + 1);
 		memcpy(dir, home, len);
 //		DBG("Resulting non-chroot path: %s", dir);
