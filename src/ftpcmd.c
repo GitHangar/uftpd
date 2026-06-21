@@ -1679,7 +1679,12 @@ fail:
 	shutdown(sd, SHUT_RDWR);
 	close(sd);
 
-	return -1;
+	/*
+	 * Reached only in the forked child (ctrl was non-NULL).  Exit the
+	 * child instead of returning to the parent's accept loop, see the
+	 * rogue-listener explanation in new_session().  Issue #32.
+	 */
+	_exit(1);
 }
 
 /**

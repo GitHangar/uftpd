@@ -23,6 +23,10 @@ All notable changes to the project are documented in this file.
   already-received data; duplicate WRQs are now re-acknowledged instead
 - Fix #42: bogus file size in FTP MLST/MLSD listings on 32-bit platforms,
   `st_size` was not cast to the type expected by the `%PRIu64` format
+- Fix #32: a session failing during setup (e.g. chroot or the writable
+  root check) returned into the parent's accept loop instead of exiting,
+  becoming a rogue listener that forked endless sessions and left defunct
+  (zombie) processes behind until the system ran out of PIDs
 
 
 [v2.15][] - 2021-12-20

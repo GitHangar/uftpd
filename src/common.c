@@ -293,8 +293,18 @@ ctrl_t *new_session(uev_ctx_t *ctx, int sd, int *rc)
 fail:
 	if (ctrl)
 		free(ctrl);
-	if (!inetd)
+	if (!inetd) {
 		free(ctx);
+
+		/*
+		 * We are the forked child.  A failure here must terminate
+		 * the child; it must never fall back to the parent's accept
+		 * loop, or it becomes a rogue listener that forks ever more
+		 * sessions, leaving defunct (zombie) processes behind until
+		 * the system runs out of PIDs.  Issue #32.
+		 */
+		_exit(1);
+	}
 	*rc = -1;
 
 	return NULL;
