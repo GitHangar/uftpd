@@ -29,7 +29,7 @@ jobs:
           echo "deb [arch=amd64] https://deb.troglobit.com/debian stable main" \
                | sudo tee /etc/apt/sources.list.d/troglobit.list
           sudo apt-get -y update
-          sudo apt-get -y install tree ftp tnftp tftp-hpa libuev-dev libite-dev
+          sudo apt-get -y install tree ftp tnftp tftp-hpa python3 libuev-dev libite-dev
           # Build and run the test suite using all available cores
           echo "MAKEFLAGS=-j$(nproc)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
