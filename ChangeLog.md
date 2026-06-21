@@ -3,11 +3,11 @@ Change Log
 
 All notable changes to the project are documented in this file.
 
-
-[v2.16][UNRELEASED] - 
+[v2.16][] - 2026-06-21
 ----------------------
 
 ### Changes
+
 - Issue #40: IPv6 support.  uftpd now opens separate IPv6 listeners for
   both FTP and TFTP, alongside the IPv4 ones.  The FTP data channel works
   over IPv6 using EPSV and EPRT (EPRT was previously unimplemented); the
@@ -15,6 +15,16 @@ All notable changes to the project are documented in this file.
   Build with `configure --disable-ipv6` to leave IPv6 out
 
 ### Fixes
+
+- Fix #32: a session failing during setup (e.g. chroot or the writable
+  root check) returned into the parent's accept loop instead of exiting,
+  becoming a rogue listener that forked endless sessions and left defunct
+  (zombie) processes behind until the system ran out of PIDs
+- Fix #41: a retransmitted TFTP WRQ reopened the destination file, leaking
+  a descriptor on every retry until "Too many open files", and truncating
+  already-received data; duplicate WRQs are now re-acknowledged instead
+- Fix #42: bogus file size in FTP MLST/MLSD listings on 32-bit platforms,
+  `st_size` was not cast to the type expected by the `%PRIu64` format
 - Fix #43: malformed TFTP OACK, the option acknowledgment included extra
   trailing NUL bytes that strict clients (e.g. Cisco switches, U-Boot) reject
 - Fix #44: TFTP server ignored the ACK block number; a lost DATA packet
@@ -25,16 +35,6 @@ All notable changes to the project are documented in this file.
 - Fix #45: TFTP transfers larger than 65535 blocks failed at the 16-bit
   block number rollover; the wrapped block is now mapped back to its
   absolute position so large files (or small block sizes) transfer fully
-- Fix #41: a retransmitted TFTP WRQ reopened the destination file, leaking
-  a descriptor on every retry until "Too many open files", and truncating
-  already-received data; duplicate WRQs are now re-acknowledged instead
-- Fix #42: bogus file size in FTP MLST/MLSD listings on 32-bit platforms,
-  `st_size` was not cast to the type expected by the `%PRIu64` format
-- Fix #32: a session failing during setup (e.g. chroot or the writable
-  root check) returned into the parent's accept loop instead of exiting,
-  becoming a rogue listener that forked endless sessions and left defunct
-  (zombie) processes behind until the system ran out of PIDs
-
 
 [v2.15][] - 2021-12-20
 ----------------------
