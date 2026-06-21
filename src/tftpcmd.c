@@ -249,6 +249,19 @@ static int handle_WRQ(ctrl_t *ctrl)
 {
 	char *path;
 
+	/*
+	 * A WRQ while a transfer is already open is a retransmission: the
+	 * client did not see our ACK/OACK.  Do NOT reopen the file, that
+	 * leaks a descriptor (and truncates received data) on every retry,
+	 * eventually exhausting file descriptors.  Issue #41.  The OACK was
+	 * already resent by parse_RWRQ(), so only re-ACK plain transfers.
+	 */
+	if (ctrl->fp) {
+		if (!ctrl->tftp_options)
+			send_ACK(ctrl, 0);
+		return 0;
+	}
+
 	path = compose_path(ctrl, ctrl->file);
 	if (!path) {
 		ERR(errno, "%s: Invalid path to file %s", ctrl->clientaddr, ctrl->file);

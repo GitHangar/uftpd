@@ -18,6 +18,9 @@ All notable changes to the project are documented in this file.
 - Fix #45: TFTP transfers larger than 65535 blocks failed at the 16-bit
   block number rollover; the wrapped block is now mapped back to its
   absolute position so large files (or small block sizes) transfer fully
+- Fix #41: a retransmitted TFTP WRQ reopened the destination file, leaking
+  a descriptor on every retry until "Too many open files", and truncating
+  already-received data; duplicate WRQs are now re-acknowledged instead
 
 
 [v2.15][] - 2021-12-20
