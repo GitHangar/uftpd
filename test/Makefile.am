@@ -2,7 +2,7 @@ EXTRA_DIST         = lib.sh ftp.sh tftp.sh mlst.sh maxfiles.sh
 CLEANFILES         = *~ *.trs *.log
 
 TEST_EXTENSIONS    = .sh
-TESTS_ENVIRONMENT  = unshare -mrun
+TESTS_ENVIRONMENT  = unshare -mrun --map-auto
 
 TESTS              = ftp.sh
 TESTS             += tftp.sh

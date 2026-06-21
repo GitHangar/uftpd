@@ -46,6 +46,9 @@ jobs:
           ldd ~/tmp/sbin/uftpd
           size ~/tmp/sbin/uftpd
           ~/tmp/sbin/uftpd -h
+      - name: Enable unprivileged userns (unshare)
+        run: |
+          sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
       - name: Test
         run: |
           ulimit -n 1024
