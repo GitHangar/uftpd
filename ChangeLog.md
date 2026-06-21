@@ -21,6 +21,8 @@ All notable changes to the project are documented in this file.
 - Fix #41: a retransmitted TFTP WRQ reopened the destination file, leaking
   a descriptor on every retry until "Too many open files", and truncating
   already-received data; duplicate WRQs are now re-acknowledged instead
+- Fix #42: bogus file size in FTP MLST/MLSD listings on 32-bit platforms,
+  `st_size` was not cast to the type expected by the `%PRIu64` format
 
 
 [v2.15][] - 2021-12-20
