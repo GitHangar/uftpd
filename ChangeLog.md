@@ -15,6 +15,9 @@ All notable changes to the project are documented in this file.
   streaming past it
 - Fix TFTP ACK packets padded with four stray NUL bytes (8-byte instead
   of 4-byte ACK), sent when receiving an upload (WRQ)
+- Fix #45: TFTP transfers larger than 65535 blocks failed at the 16-bit
+  block number rollover; the wrapped block is now mapped back to its
+  absolute position so large files (or small block sizes) transfer fully
 
 
 [v2.15][] - 2021-12-20

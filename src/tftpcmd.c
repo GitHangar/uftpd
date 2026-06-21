@@ -63,8 +63,9 @@ static int do_send(ctrl_t *ctrl, size_t len)
 	return 0;
 }
 
-/* If @block is non-zero, resend that block */
-static int send_DATA(ctrl_t *ctrl, int block)
+/* If @block is non-zero it is the absolute block number to (re)send.
+ * Only the low 16 bits go on the wire, the number wraps after 65535. */
+static int send_DATA(ctrl_t *ctrl, long block)
 {
 	size_t  len;
 
@@ -73,18 +74,19 @@ static int send_DATA(ctrl_t *ctrl, int block)
 	/* Create message */
 	ctrl->th->th_opcode = htons(DATA);
 	if (block) {
-		int pos = (block - 1) * ctrl->segsize;
+		long pos = (block - 1) * (long)ctrl->segsize;
 
-		ctrl->th->th_block = htons(block);
+		ctrl->th->th_block = htons(block & 0xffff);
 		if (-1 == fseek(ctrl->fp, pos, SEEK_SET)) {
 			ERR(errno, "Failed resending block");
 			return 1;
 		}
 	} else {
-		ctrl->th->th_block = htons((ftell(ctrl->fp) / ctrl->segsize) + 1);
+		block = (ftell(ctrl->fp) / ctrl->segsize) + 1;
+		ctrl->th->th_block = htons(block & 0xffff);
 	}
 
-	DBG("tftp block %d reading %zd bytes ...", ctrl->th->th_block, ctrl->segsize);
+	DBG("tftp block %ld reading %zd bytes ...", block, ctrl->segsize);
 	len = fread(ctrl->th->th_data, sizeof(char), ctrl->segsize, ctrl->fp);
 
 	return do_send(ctrl, len);
@@ -296,7 +298,7 @@ static int handle_DATA(ctrl_t *ctrl, size_t len)
 static int handle_ACK(ctrl_t *ctrl, int block)
 {
 	if (ctrl->fp) {
-		long last;
+		long acked, last;
 
 		if (feof(ctrl->fp)) {
 			fclose(ctrl->fp);
@@ -305,15 +307,18 @@ static int handle_ACK(ctrl_t *ctrl, int block)
 		}
 
 		/*
-		 * Honor the block the client acknowledged.  If it is behind
+		 * Block numbers are only 16 bits and wrap after 65535, so map
+		 * the acknowledged block back to its absolute position, using
+		 * the last block we sent as reference.  If the client is behind
 		 * the last block we sent, a DATA packet was lost; go back and
-		 * resend from there instead of streaming past it.  Issue #44.
+		 * resend from there instead of streaming past it.  Issues #44, #45.
 		 */
-		last = ftell(ctrl->fp) / ctrl->segsize;
-		DBG("ACK block %d, last sent %ld, file still open ...", block, last);
+		last  = ftell(ctrl->fp) / ctrl->segsize;
+		acked = last - ((last - block) & 0xffff);
+		DBG("ACK block %d (abs %ld), last sent %ld ...", block, acked, last);
 
-		if (block < last)
-			return !send_DATA(ctrl, block + 1);
+		if (acked >= 1 && acked < last)
+			return !send_DATA(ctrl, acked + 1);
 
 		return !send_DATA(ctrl, 0);
 	}
