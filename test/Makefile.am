@@ -4,13 +4,15 @@ CLEANFILES         = *~ *.trs *.log
 TEST_EXTENSIONS    = .sh
 TESTS_ENVIRONMENT  = unshare -mrun --map-auto
 
-TESTS              = ftp.sh
+# Slowest tests first so they start early when 'make -j check' has fewer
+# job slots than tests (e.g. on CI), minimizing total wall-clock time.
+TESTS              = maxfiles.sh
+TESTS             += rollover.sh
+TESTS             += ftp.sh
 TESTS             += tftp.sh
 TESTS             += oack.sh
 TESTS             += dupack.sh
-TESTS             += rollover.sh
 TESTS             += wrq.sh
 TESTS             += zombies.sh
 TESTS             += ipv6.sh
 TESTS             += mlst.sh
-TESTS             += maxfiles.sh

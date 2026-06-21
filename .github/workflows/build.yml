@@ -21,7 +21,6 @@ jobs:
         compiler: [gcc, clang]
       fail-fast: false
     env:
-      MAKEFLAGS: -j3
       CC: ${{ matrix.compiler }}
     steps:
       - name: Install dependencies
@@ -31,6 +30,8 @@ jobs:
                | sudo tee /etc/apt/sources.list.d/troglobit.list
           sudo apt-get -y update
           sudo apt-get -y install tree ftp tnftp tftp-hpa libuev-dev libite-dev
+          # Build and run the test suite using all available cores
+          echo "MAKEFLAGS=-j$(nproc)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
       - name: Configure
         run: |
@@ -52,5 +53,5 @@ jobs:
       - name: Test
         run: |
           ulimit -n 1024
-          # Tests must currently not run in parallel
-          LD_LIBRARY_PATH=/tmp/lib make -j1 check
+          # Each test runs in its own namespace, so they parallelize
+          LD_LIBRARY_PATH=/tmp/lib make check
