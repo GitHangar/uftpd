@@ -23,7 +23,7 @@ jobs:
           echo "deb [arch=amd64] https://deb.troglobit.com/debian stable main" \
                | sudo tee /etc/apt/sources.list.d/troglobit.list
           sudo apt-get -y update
-          sudo apt-get -y install ftp tnftp tftp-hpa libuev-dev libite-dev
+          sudo apt-get -y install ftp tnftp tftp-hpa python3 libuev-dev libite-dev
       - name: Setting release variables ...
         id: build
         run: |
@@ -40,6 +40,9 @@ jobs:
         run: |
           ./autogen.sh
           ./configure
+      - name: Enable unprivileged userns (unshare)
+        run: |
+          sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
       - name: Build release ...
         run: |
           make release
