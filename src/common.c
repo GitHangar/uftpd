@@ -142,13 +142,13 @@ int set_nonblock(int fd)
 	return fd;
 }
 
-int open_socket(int port, int type, char *desc)
+int open_socket(sa_family_t family, int port, int type, char *desc)
 {
 	int sd, err, val = 1;
-	socklen_t len = sizeof(struct sockaddr);
-	struct sockaddr_in server;
+	inet_addr_t server;
+	socklen_t len;
 
-	sd = socket(AF_INET, type | SOCK_NONBLOCK, 0);
+	sd = socket(family, type | SOCK_NONBLOCK, 0);
 	if (sd < 0) {
 		WARN(errno, "Failed creating %s server socket", desc);
 		return -1;
@@ -158,10 +158,19 @@ int open_socket(int port, int type, char *desc)
 	if (err != 0)
 		WARN(errno, "Failed setting SO_REUSEADDR on %s socket", type == SOCK_DGRAM ? "TFTP" : "FTP");
 
-	memset(&server, 0, sizeof(server));
-	server.sin_family      = AF_INET;
-	server.sin_addr.s_addr = INADDR_ANY;
-	server.sin_port        = htons(port);
+#ifdef ENABLE_IPV6
+	/*
+	 * Keep the IPv6 listener separate from the IPv4 one (no v4-mapped
+	 * addresses), so the IPv4 data path is unaffected by IPv6 support.
+	 */
+	if (family == AF_INET6) {
+		if (setsockopt(sd, IPPROTO_IPV6, IPV6_V6ONLY, &val, sizeof(val)))
+			WARN(errno, "Failed setting IPV6_V6ONLY on %s socket", desc);
+	}
+#endif
+
+	inet_anyaddr(family, port, &server);
+	len = inet_len(&server);
 	if (bind(sd, (struct sockaddr *)&server, len) < 0) {
 		if (EACCES != errno) {
 			WARN(errno, "Failed binding to port %d, maybe another %s server is already running", port, desc);

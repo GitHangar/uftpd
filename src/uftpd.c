@@ -34,6 +34,11 @@ struct passwd *pw = NULL;
 /* Event contexts */
 static uev_t ftp_watcher;
 static uev_t tftp_watcher;
+#ifdef ENABLE_IPV6
+static uev_t  ftp6_watcher;
+static uev_t  tftp6_watcher;
+static pid_t  tftp6_pid = 0;
+#endif
 static uev_t sigchld_watcher;
 static uev_t sigterm_watcher;
 static uev_t sigint_watcher;
@@ -97,6 +102,13 @@ static void sigchld_cb(uev_t *w, void *arg, int events)
 			tftp_pid = 0;
 			uev_io_start(&tftp_watcher);
 		}
+#ifdef ENABLE_IPV6
+		else if (pid == tftp6_pid) {
+			DBG("Previous TFTP/IPv6 session ended, restarting watcher ...");
+			tftp6_pid = 0;
+			uev_io_start(&tftp6_watcher);
+		}
+#endif
 	}
 }
 
@@ -196,6 +208,13 @@ static void ftp_cb(uev_t *w, void *arg, int events)
 
 static void tftp_cb(uev_t *w, void *arg, int events)
 {
+	pid_t *pidp = &tftp_pid;
+
+#ifdef ENABLE_IPV6
+	if (w == &tftp6_watcher)
+		pidp = &tftp6_pid;
+#endif
+
 	uev_io_stop(w);
 
 	if (UEV_ERROR == events || UEV_HUP == events) {
@@ -203,14 +222,14 @@ static void tftp_cb(uev_t *w, void *arg, int events)
 		return;
 	}
 
-        tftp_pid = tftp_session(arg, w->fd);
-	if (tftp_pid < 0) {
-		tftp_pid = 0;
+	*pidp = tftp_session(arg, w->fd);
+	if (*pidp < 0) {
+		*pidp = 0;
 		uev_io_start(w);
 	}
 }
 
-static int start_service(uev_ctx_t *ctx, uev_t *w, uev_cb_t *cb, int port, int type, char *desc)
+static int start_service(uev_ctx_t *ctx, uev_t *w, uev_cb_t *cb, sa_family_t family, int port, int type, char *desc)
 {
 	int sd;
 
@@ -218,7 +237,7 @@ static int start_service(uev_ctx_t *ctx, uev_t *w, uev_cb_t *cb, int port, int t
 		/* Disabled */
 		return 1;
 
-	sd = open_socket(port, type, desc);
+	sd = open_socket(family, port, type, desc);
 	if (sd < 0) {
 		if (EACCES == errno)
 			WARN(0, "Not allowed to start %s service.%s",
@@ -237,8 +256,15 @@ static int serve_files(uev_ctx_t *ctx)
 	int ftp, tftp;
 
 	DBG("Starting services ...");
-	ftp  = start_service(ctx, &ftp_watcher,   ftp_cb, do_ftp, SOCK_STREAM, "FTP");
-	tftp = start_service(ctx, &tftp_watcher, tftp_cb, do_tftp, SOCK_DGRAM, "TFTP");
+	ftp  = start_service(ctx, &ftp_watcher,   ftp_cb, AF_INET, do_ftp, SOCK_STREAM, "FTP");
+	tftp = start_service(ctx, &tftp_watcher, tftp_cb, AF_INET, do_tftp, SOCK_DGRAM, "TFTP");
+#ifdef ENABLE_IPV6
+	/* Separate IPv6 listeners, kept distinct from the IPv4 ones */
+	if (!start_service(ctx, &ftp6_watcher,  ftp_cb,  AF_INET6, do_ftp,  SOCK_STREAM, "FTP/IPv6"))
+		ftp = 0;
+	if (!start_service(ctx, &tftp6_watcher, tftp_cb, AF_INET6, do_tftp, SOCK_DGRAM, "TFTP/IPv6"))
+		tftp = 0;
+#endif
 
 	/* Check if failed to start any service ... */
 	if (ftp && tftp)

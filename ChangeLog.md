@@ -7,6 +7,13 @@ All notable changes to the project are documented in this file.
 [v2.16][UNRELEASED] - 
 ----------------------
 
+### Changes
+- Issue #40: IPv6 support.  uftpd now opens separate IPv6 listeners for
+  both FTP and TFTP, alongside the IPv4 ones.  The FTP data channel works
+  over IPv6 using EPSV and EPRT (EPRT was previously unimplemented); the
+  legacy PASV/PORT commands stay IPv4 only, as the protocol requires.
+  Build with `configure --disable-ipv6` to leave IPv6 out
+
 ### Fixes
 - Fix #43: malformed TFTP OACK, the option acknowledgment included extra
   trailing NUL bytes that strict clients (e.g. Cisco switches, U-Boot) reject

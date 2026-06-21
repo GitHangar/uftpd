@@ -1,4 +1,4 @@
-EXTRA_DIST         = lib.sh ftp.sh tftp.sh oack.sh dupack.sh rollover.sh wrq.sh zombies.sh mlst.sh maxfiles.sh
+EXTRA_DIST         = lib.sh ftp.sh tftp.sh oack.sh dupack.sh rollover.sh wrq.sh zombies.sh ipv6.sh mlst.sh maxfiles.sh
 CLEANFILES         = *~ *.trs *.log
 
 TEST_EXTENSIONS    = .sh
@@ -11,5 +11,6 @@ TESTS             += dupack.sh
 TESTS             += rollover.sh
 TESTS             += wrq.sh
 TESTS             += zombies.sh
+TESTS             += ipv6.sh
 TESTS             += mlst.sh
 TESTS             += maxfiles.sh

@@ -165,25 +165,34 @@ static int recv_msg(int sd, char *msg, size_t len, char **cmd, char **argument)
 
 static int open_data_connection(ctrl_t *ctrl)
 {
-	socklen_t len = sizeof(struct sockaddr);
-	struct sockaddr_in sin = { 0 };
+	inet_addr_t sin = { 0 };
+	socklen_t len;
 
-	/* Previous PORT command from client */
+	/* Previous PORT/EPRT command from client */
 	if (ctrl->data_address[0]) {
+		sa_family_t family = ctrl->data_family ? ctrl->data_family : AF_INET;
 		int rc;
 
-		ctrl->data_sd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+		ctrl->data_sd = socket(family, SOCK_STREAM | SOCK_NONBLOCK, 0);
 		if (-1 == ctrl->data_sd) {
 			ERR(errno, "Failed creating data socket");
 			return -1;
 		}
 
-		memset(&sin, 0, sizeof(sin));
-		sin.sin_family = AF_INET;
-		sin.sin_port = htons(ctrl->data_port);
-		inet_aton(ctrl->data_address, &(sin.sin_addr));
+		sin.ss_family = family;
+		if (family == AF_INET6) {
+			struct sockaddr_in6 *s6 = (struct sockaddr_in6 *)&sin;
 
-		rc = connect(ctrl->data_sd, (struct sockaddr *)&sin, len);
+			inet_pton(AF_INET6, ctrl->data_address, &s6->sin6_addr);
+			s6->sin6_port = htons(ctrl->data_port);
+		} else {
+			struct sockaddr_in *s4 = (struct sockaddr_in *)&sin;
+
+			inet_pton(AF_INET, ctrl->data_address, &s4->sin_addr);
+			s4->sin_port = htons(ctrl->data_port);
+		}
+
+		rc = connect(ctrl->data_sd, (struct sockaddr *)&sin, inet_len(&sin));
 		if (rc == -1 && EINPROGRESS != errno) {
 			ERR(errno, "Failed connecting data socket to client");
 			close(ctrl->data_sd);
@@ -200,10 +209,11 @@ static int open_data_connection(ctrl_t *ctrl)
 	/* Previous PASV command, accept connect from client */
 	if (ctrl->data_listen_sd > 0) {
 		const int const_int_1 = 1;
-		char client_ip[100];
+		char client_ip[INET_ADDRSTR_LEN];
 		int retries = 3;
 
 	retry:
+		len = sizeof(sin);
 		ctrl->data_sd = accept(ctrl->data_listen_sd, (struct sockaddr *)&sin, &len);
 		if (-1 == ctrl->data_sd) {
 			if (EAGAIN == errno && --retries) {
@@ -218,8 +228,8 @@ static int open_data_connection(ctrl_t *ctrl)
 		setsockopt(ctrl->data_sd, SOL_SOCKET, SO_KEEPALIVE, &const_int_1, sizeof(const_int_1));
 		set_nonblock(ctrl->data_sd);
 
-		inet_ntop(AF_INET, &(sin.sin_addr), client_ip, INET_ADDRSTRLEN);
-		DBG("Client PASV data connection from %s:%d", client_ip, ntohs(sin.sin_port));
+		inet_ntop2(&sin, client_ip, sizeof(client_ip));
+		DBG("Client PASV data connection from %s:%d", client_ip, inet_port(&sin));
 
 		close(ctrl->data_listen_sd);
 		ctrl->data_listen_sd = -1;
@@ -250,10 +260,11 @@ static int close_data_connection(ctrl_t *ctrl)
 		ret++;
 	}
 
-	/* PORT */
+	/* PORT/EPRT */
 	if (ctrl->data_address[0]) {
 		ctrl->data_address[0] = 0;
 		ctrl->data_port = 0;
+		ctrl->data_family = 0;
 	}
 
 	return ret;
@@ -465,15 +476,73 @@ static void handle_PORT(ctrl_t *ctrl, char *str)
 	}
 
 	strlcpy(ctrl->data_address, addr, sizeof(ctrl->data_address));
-	ctrl->data_port = e * 256 + f;
+	ctrl->data_port   = e * 256 + f;
+	ctrl->data_family = AF_INET;
 
 	DBG("Client PORT command accepted for %s:%d", ctrl->data_address, ctrl->data_port);
 	send_msg(ctrl->sd, "200 PORT command successful.\r\n");
 }
 
+/*
+ * EPRT |proto|addr|port|, RFC 2428.  @proto is 1 for IPv4, 2 for IPv6,
+ * the delimiter (here '|') is whatever character the argument starts with.
+ */
 static void handle_EPRT(ctrl_t *ctrl, char *str)
 {
-	send_msg(ctrl->sd, "502 Command not implemented.\r\n");
+	char buf[INET_ADDRSTR_LEN + 16], delim[2];
+	char *proto, *addr, *port, *sp;
+	sa_family_t family;
+	inet_addr_t sa;
+
+	if (ctrl->data_sd > 0) {
+		uev_io_stop(&ctrl->data_watcher);
+		close(ctrl->data_sd);
+		ctrl->data_sd = -1;
+	}
+
+	if (!str || !str[0]) {
+		send_msg(ctrl->sd, "500 No EPRT specified.\r\n");
+		return;
+	}
+
+	delim[0] = str[0];
+	delim[1] = 0;
+	strlcpy(buf, str, sizeof(buf));
+
+	sp = buf;
+	strsep(&sp, delim);		/* leading empty field before first delim */
+	proto = strsep(&sp, delim);
+	addr  = strsep(&sp, delim);
+	port  = strsep(&sp, delim);
+	if (!proto || !addr || !port) {
+		send_msg(ctrl->sd, "501 Illegal EPRT command.\r\n");
+		return;
+	}
+
+	if (!strcmp(proto, "1"))
+		family = AF_INET;
+	else if (!strcmp(proto, "2"))
+		family = AF_INET6;
+	else {
+		send_msg(ctrl->sd, "522 Network protocol not supported, use (1,2)\r\n");
+		return;
+	}
+
+	/* Validate the address before accepting it */
+	memset(&sa, 0, sizeof(sa));
+	if (inet_pton(family, addr, family == AF_INET6
+		      ? (void *)&((struct sockaddr_in6 *)&sa)->sin6_addr
+		      : (void *)&((struct sockaddr_in *)&sa)->sin_addr) != 1) {
+		send_msg(ctrl->sd, "501 Illegal EPRT command.\r\n");
+		return;
+	}
+
+	strlcpy(ctrl->data_address, addr, sizeof(ctrl->data_address));
+	ctrl->data_port   = atoi(port);
+	ctrl->data_family = family;
+
+	DBG("Client EPRT command accepted for %s:%d", ctrl->data_address, ctrl->data_port);
+	send_msg(ctrl->sd, "200 EPRT command successful.\r\n");
 }
 
 static char *mode_to_str(mode_t m)
@@ -914,9 +983,9 @@ static void do_pasv_connection(uev_t *w, void *arg, int events)
 	ctrl->pending = PENDING_NONE;
 }
 
-static int do_PASV(ctrl_t *ctrl, char *arg, struct sockaddr *data, socklen_t *len)
+static int do_PASV(ctrl_t *ctrl, char *arg, inet_addr_t *data, socklen_t *len)
 {
-	struct sockaddr_in server;
+	inet_addr_t server;
 
 	if (ctrl->data_sd > 0) {
 		close(ctrl->data_sd);
@@ -926,18 +995,17 @@ static int do_PASV(ctrl_t *ctrl, char *arg, struct sockaddr *data, socklen_t *le
 	if (ctrl->data_listen_sd > 0)
 		close(ctrl->data_listen_sd);
 
-	ctrl->data_listen_sd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+	ctrl->data_listen_sd = socket(ctrl->server_sa.ss_family, SOCK_STREAM | SOCK_NONBLOCK, 0);
 	if (ctrl->data_listen_sd < 0) {
 		ERR(errno, "Failed opening data server socket");
 		send_msg(ctrl->sd, "426 Internal server error.\r\n");
 		return 1;
 	}
 
-	memset(&server, 0, sizeof(server));
-	server.sin_family      = AF_INET;
-	server.sin_addr.s_addr = inet_addr(ctrl->serveraddr);
-	server.sin_port        = htons(0);
-	if (bind(ctrl->data_listen_sd, (struct sockaddr *)&server, sizeof(server)) < 0) {
+	/* Listen on the same local address the control channel arrived on */
+	memcpy(&server, &ctrl->server_sa, sizeof(server));
+	inet_set_port(&server, 0);
+	if (bind(ctrl->data_listen_sd, (struct sockaddr *)&server, inet_len(&server)) < 0) {
 		ERR(errno, "Failed binding to client socket");
 		send_msg(ctrl->sd, "426 Internal server error.\r\n");
 		close(ctrl->data_listen_sd);
@@ -955,7 +1023,7 @@ static int do_PASV(ctrl_t *ctrl, char *arg, struct sockaddr *data, socklen_t *le
 	}
 
 	memset(data, 0, sizeof(*data));
-	if (-1 == getsockname(ctrl->data_listen_sd, data, len)) {
+	if (-1 == getsockname(ctrl->data_listen_sd, (struct sockaddr *)data, len)) {
 		ERR(errno, "Cannot determine our address, need it if client should connect to us");
 		close(ctrl->data_listen_sd);
 		ctrl->data_listen_sd = -1;
@@ -969,12 +1037,18 @@ static int do_PASV(ctrl_t *ctrl, char *arg, struct sockaddr *data, socklen_t *le
 
 static void handle_PASV(ctrl_t *ctrl, char *arg)
 {
-	struct sockaddr_in data;
+	inet_addr_t data;
 	socklen_t len = sizeof(data);
 	char *msg, *p, buf[200];
 	int port;
 
-	if (do_PASV(ctrl, arg, (struct sockaddr *)&data, &len))
+	/* The 227 reply can only carry an IPv4 address, IPv6 clients use EPSV */
+	if (ctrl->server_sa.ss_family != AF_INET) {
+		send_msg(ctrl->sd, "522 Use EPSV for IPv6.\r\n");
+		return;
+	}
+
+	if (do_PASV(ctrl, arg, &data, &len))
 		return;
 
 	/* Convert server IP address and port to comma separated list */
@@ -990,7 +1064,7 @@ static void handle_PASV(ctrl_t *ctrl, char *arg)
 	while ((p = strchr(p, '.')))
 		*p++ = ',';
 
-	port = ntohs(data.sin_port);
+	port = inet_port(&data);
 	snprintf(buf, sizeof(buf), "227 Entering Passive Mode (%s,%d,%d)\r\n",
 		 msg, port / 256, port % 256);
 	send_msg(ctrl->sd, buf);
@@ -1000,7 +1074,7 @@ static void handle_PASV(ctrl_t *ctrl, char *arg)
 
 static void handle_EPSV(ctrl_t *ctrl, char *arg)
 {
-	struct sockaddr_in data;
+	inet_addr_t data;
 	socklen_t len = sizeof(data);
 	char buf[200];
 
@@ -1009,10 +1083,10 @@ static void handle_EPSV(ctrl_t *ctrl, char *arg)
 		return;
 	}
 
-	if (do_PASV(ctrl, arg, (struct sockaddr *)&data, &len))
+	if (do_PASV(ctrl, arg, &data, &len))
 		return;
 
-	snprintf(buf, sizeof(buf), "229 Entering Extended Passive Mode (|||%d|)\r\n", ntohs(data.sin_port));
+	snprintf(buf, sizeof(buf), "229 Entering Extended Passive Mode (|||%d|)\r\n", inet_port(&data));
 	send_msg(ctrl->sd, buf);
 }
 

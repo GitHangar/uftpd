@@ -16,6 +16,12 @@ AC_PROG_INSTALL
 AC_CHECK_HEADERS(sys/time.h)
 AC_CHECK_FUNCS(strstr getopt getsubopt gettimeofday)
 
+AC_ARG_ENABLE([ipv6],
+	AS_HELP_STRING([--disable-ipv6], [disable IPv6 support, enabled by default]),
+	[enable_ipv6=$enableval], [enable_ipv6=yes])
+AS_IF([test "x$enable_ipv6" != "xno"],
+	[AC_DEFINE([ENABLE_IPV6], [1], [Define to enable IPv6 support.])])
+
 # Check for uint[8,16,32]_t
 AC_TYPE_UINT8_T
 AC_TYPE_UINT16_T

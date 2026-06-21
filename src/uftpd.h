@@ -54,6 +54,8 @@
 # include <lite/lite.h>
 #endif
 
+#include "inet.h"
+
 #define FTP_DEFAULT_PORT  21
 #define FTP_SERVICE_NAME  "ftp"
 #define FTP_PROTO_NAME    "tcp"
@@ -123,8 +125,8 @@ typedef struct {
 	struct sockaddr_storage server_sa;
 	struct sockaddr_storage client_sa;
 
-	char serveraddr[INET_ADDRSTRLEN];
-	char clientaddr[INET_ADDRSTRLEN];
+	char serveraddr[INET_ADDRSTR_LEN];
+	char clientaddr[INET_ADDRSTR_LEN];
 
 	/* Event loop context and session watchers */
 	uev_t      io_watcher, data_watcher, timeout_watcher;
@@ -159,9 +161,10 @@ typedef struct {
 	int data_sd;
 	int data_listen_sd;
 
-	/* PORT */
-	char data_address[INET_ADDRSTRLEN];
-	int  data_port;
+	/* PORT/EPRT */
+	char        data_address[INET_ADDRSTR_LEN];
+	int         data_port;
+	sa_family_t data_family;
 } ctrl_t;
 
 ctrl_t *new_session(uev_ctx_t *ctx, int sd, int *rc);
@@ -173,7 +176,7 @@ int     tftp_session(uev_ctx_t *ctx, int client);
 char   *compose_path(ctrl_t *ctrl, char *path);
 char   *compose_abspath(ctrl_t *ctrl, char *path);
 int     set_nonblock(int fd);
-int     open_socket(int port, int type, char *desc);
+int     open_socket(sa_family_t family, int port, int type, char *desc);
 void    convert_address(struct sockaddr_storage *ss, char *buf, size_t len);
 
 int     loglvl(char *level);
