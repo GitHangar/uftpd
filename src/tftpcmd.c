@@ -98,7 +98,8 @@ static int send_ACK(ctrl_t *ctrl, int block)
 	ctrl->th->th_block  = htons(block);
 	DBG("ACK block %d", block);
 
-	return do_send(ctrl, 4);
+	/* An ACK is just opcode + block, do_send() adds that header */
+	return do_send(ctrl, 0);
 }
 
 /* Acknowledge options sent by client */
@@ -231,6 +232,14 @@ static int handle_RRQ(ctrl_t *ctrl)
 		return send_ERROR(ctrl, ENOTFOUND, NULL);
 	}
 
+	/*
+	 * With negotiated options the OACK has already been sent.  Per RFC
+	 * 2347 we must wait for the client's ACK 0 before sending the first
+	 * data block, otherwise the stream runs a block ahead of the ACKs.
+	 */
+	if (ctrl->tftp_options)
+		return 1;
+
 	return !send_DATA(ctrl, 0);
 }
 
@@ -287,13 +296,25 @@ static int handle_DATA(ctrl_t *ctrl, size_t len)
 static int handle_ACK(ctrl_t *ctrl, int block)
 {
 	if (ctrl->fp) {
+		long last;
+
 		if (feof(ctrl->fp)) {
 			fclose(ctrl->fp);
 			ctrl->fp = NULL;
 			return 0;
 		}
 
-		DBG("ACK block %d, file still open ... ", block);
+		/*
+		 * Honor the block the client acknowledged.  If it is behind
+		 * the last block we sent, a DATA packet was lost; go back and
+		 * resend from there instead of streaming past it.  Issue #44.
+		 */
+		last = ftell(ctrl->fp) / ctrl->segsize;
+		DBG("ACK block %d, last sent %ld, file still open ...", block, last);
+
+		if (block < last)
+			return !send_DATA(ctrl, block + 1);
+
 		return !send_DATA(ctrl, 0);
 	}
 

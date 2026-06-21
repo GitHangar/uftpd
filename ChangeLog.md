@@ -10,6 +10,11 @@ All notable changes to the project are documented in this file.
 ### Fixes
 - Fix #43: malformed TFTP OACK, the option acknowledgment included extra
   trailing NUL bytes that strict clients (e.g. Cisco switches, U-Boot) reject
+- Fix #44: TFTP server ignored the ACK block number; a lost DATA packet
+  is now detected and the missing block retransmitted, instead of
+  streaming past it
+- Fix TFTP ACK packets padded with four stray NUL bytes (8-byte instead
+  of 4-byte ACK), sent when receiving an upload (WRQ)
 
 
 [v2.15][] - 2021-12-20
