@@ -4,6 +4,14 @@ Change Log
 All notable changes to the project are documented in this file.
 
 
+[v2.16][UNRELEASED] - 
+----------------------
+
+### Fixes
+- Fix #43: malformed TFTP OACK, the option acknowledgment included extra
+  trailing NUL bytes that strict clients (e.g. Cisco switches, U-Boot) reject
+
+
 [v2.15][] - 2021-12-20
 ----------------------
 
@@ -520,6 +528,7 @@ First official uftpd release! :-)
 
 
 [UNRELEASED]:    https://github.com/troglobit/uftpd/compare/v2.15...HEAD
+[v2.16]:         https://github.com/troglobit/uftpd/compare/v2.15...HEAD
 [v2.15]:         https://github.com/troglobit/uftpd/compare/v2.14...v2.15
 [v2.14]:         https://github.com/troglobit/uftpd/compare/v2.13...v2.14
 [v2.13]:         https://github.com/troglobit/uftpd/compare/v2.12...v2.13

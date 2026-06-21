@@ -51,7 +51,8 @@ static int do_send(ctrl_t *ctrl, size_t len)
 	if (ctrl->client_sa.ss_family == AF_INET6)
 		salen = sizeof(struct sockaddr_in6);
 
-	if (ctrl->th->th_opcode == OACK)
+	/* th_opcode is stored in network byte order, compare accordingly */
+	if (ctrl->th->th_opcode == htons(OACK))
 		hdrsz = ctrl->th->th_stuff - ctrl->buf;
 
 	DBG("SND %c: header size: %zd, data len: %zd ...", ctrl->th->th_code, hdrsz, len);
@@ -119,7 +120,13 @@ static int send_OACK(ctrl_t *ctrl)
 		ptr ++;
 	}
 
-	return do_send(ctrl, ptr - ctrl->buf);
+	/*
+	 * do_send() adds the OACK header size (th_stuff - buf) itself, so
+	 * we must pass only the length of the option block here.  Passing
+	 * ptr - buf double-counts the header and appends stray NUL bytes,
+	 * which strict clients (e.g. Cisco, U-Boot) reject.  Issue #43.
+	 */
+	return do_send(ctrl, ptr - ctrl->th->th_stuff);
 }
 
 static int send_ERROR(ctrl_t *ctrl, int code, char *str)
